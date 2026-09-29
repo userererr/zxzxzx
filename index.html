@@ -621,10 +621,11 @@ sSkills:true,sProjects:true,sMedia:true,sSocials:true,sContact:true
 };
 
 /* ===== كلمة مرور لوحة الإدارة: بصمة PBKDF2-SHA256 فقط، لا يوجد نص صريح في أي مكان =====
-   ⚠️ PLACEHOLDER — استبدل القيمة التالية بالسطر الناتج من صفحة hash.html
+   بصمة كلمة مرور المالك (مولّدة من صفحة hash.html داخل متصفح المالك؛ كلمة المرور نفسها غير موجودة هنا)
    الصيغة: pbkdf2$<iterations>$<salt_base64>$<hash_base64>
-   ما دامت القيمة تحتوي REPLACE فكل محاولات الدخول تُرفض. */
-const ADMIN_HASH = 'pbkdf2$200000$REPLACE_SALT$REPLACE_HASH';
+   لتغييرها: ولّد سطراً جديداً من hash.html وضعه مكان القيمة التالية.
+   (أي قيمة تحتوي REPLACE أو غير صالحة تجعل كل محاولات الدخول تُرفض.) */
+const ADMIN_HASH = 'pbkdf2$200000$Alisifr83xLePXD6KUUdeA==$yb4ckXuiHB+WHjGzF9CcMRt+Hc8SGg8QqFtUnEzkntU=';
 const PW_ITER = 200000, PW_SALT_BYTES = 16, PW_HASH_BYTES = 32;
 
 const b64 = u8 => btoa(String.fromCharCode(...u8));
