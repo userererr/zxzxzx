@@ -1,0 +1,8 @@
+{
+  "name": "zxzxzx-build",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Build tooling: obfuscate inline app JS into deployed index.html",
+  "scripts": { "build": "node obfuscate.js" },
+  "dependencies": { "javascript-obfuscator": "^5.8.0" }
+}
