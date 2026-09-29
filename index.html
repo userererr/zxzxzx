@@ -562,7 +562,7 @@ footer #ftRole:not(:empty)::before{content:" — "}
     </div>
 
     <div class="pane" data-p="security">
-      <div class="info">⚠️ كلمة المرور تُحفظ في المتصفح.</div>
+      <div class="info">🔐 لا تُحفظ كلمة المرور نفسها؛ تُحفظ بصمة مشفّرة فقط (PBKDF2-SHA256 مع ملح عشوائي).</div>
       <div class="field"><label>كلمة المرور الحالية</label><input type="password" id="fOldPw"></div>
       <div class="row2">
         <div class="field"><label>الجديدة</label><input type="password" id="fNewPw"></div>
@@ -617,11 +617,70 @@ skills:[{i:'🌐',n:'HTML/CSS',l:95},{i:'⚡',n:'JavaScript',l:88},{i:'⚛️',n
 projects:[{i:'🚀',t:'مشروعي',d:'وصف المشروع',g:'HTML, JavaScript',u:'#',img:''}],
 socials:[{p:'whatsapp',u:'https://wa.me/966500000000'},{p:'instagram',u:'https://instagram.com/username'},{p:'twitter',u:'https://x.com/username'}],
 bgImg:'',bgOp:50,bgFit:'cover',media:[],
-sSkills:true,sProjects:true,sMedia:true,sSocials:true,sContact:true,
-pw:'admin123'
+sSkills:true,sProjects:true,sMedia:true,sSocials:true,sContact:true
 };
 
-let CFG=(()=>{try{const s=localStorage.getItem('pf:c');return s?{...DEF,...JSON.parse(s)}:{...DEF}}catch(e){return{...DEF}}})();
+/* ===== كلمة مرور لوحة الإدارة: بصمة PBKDF2-SHA256 فقط، لا يوجد نص صريح في أي مكان =====
+   ⚠️ PLACEHOLDER — استبدل القيمة التالية بالسطر الناتج من صفحة hash.html
+   الصيغة: pbkdf2$<iterations>$<salt_base64>$<hash_base64>
+   ما دامت القيمة تحتوي REPLACE فكل محاولات الدخول تُرفض. */
+const ADMIN_HASH = 'pbkdf2$200000$REPLACE_SALT$REPLACE_HASH';
+const PW_ITER = 200000, PW_SALT_BYTES = 16, PW_HASH_BYTES = 32;
+
+const b64 = u8 => btoa(String.fromCharCode(...u8));
+const unb64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+
+// PBKDF2-SHA256 عبر Web Crypto داخل المتصفح
+async function pbkdf2(password, salt, iterations){
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveBits']);
+  const bits = await crypto.subtle.deriveBits({name:'PBKDF2', hash:'SHA-256', salt, iterations}, key, PW_HASH_BYTES * 8);
+  return new Uint8Array(bits);
+}
+// بصمة جديدة بملح عشوائي — تُستخدم عند تغيير كلمة المرور من اللوحة
+async function makePwHash(password){
+  const salt = crypto.getRandomValues(new Uint8Array(PW_SALT_BYTES));
+  return `pbkdf2$${PW_ITER}$${b64(salt)}$${b64(await pbkdf2(password, salt, PW_ITER))}`;
+}
+// يعيد {it, salt, hash} أو null إذا كانت القيمة غير صالحة أو ما زالت placeholder
+function parsePwHash(str){
+  if (typeof str !== 'string' || str.includes('REPLACE')) return null;
+  const p = str.split('$');
+  if (p.length !== 4 || p[0] !== 'pbkdf2' || !/^\d+$/.test(p[1])) return null;
+  const it = +p[1];
+  if (it < 100000 || it > 5000000) return null;
+  try{
+    const salt = unb64(p[2]), hash = unb64(p[3]);
+    if (salt.length < 16 || hash.length !== PW_HASH_BYTES) return null;
+    return {it, salt, hash};
+  }catch(e){ return null }
+}
+// بصمة اللوحة (CFG.pwHash) إن وُجدت وصالحة، وإلا بصمة الكود ADMIN_HASH
+const activePwHash = () => parsePwHash(CFG.pwHash) ? CFG.pwHash : ADMIN_HASH;
+async function checkPw(password){
+  const h = parsePwHash(activePwHash());
+  if (!h || !password || !(window.crypto && crypto.subtle)) return false;
+  try{
+    const got = await pbkdf2(password, h.salt, h.it);
+    let diff = got.length ^ h.hash.length;               // مقارنة بزمن شبه ثابت
+    for (let i = 0; i < h.hash.length; i++) diff |= got[i] ^ h.hash[i];
+    return diff === 0;
+  }catch(e){ return false }
+}
+// تنظيف الإعدادات: حذف أي كلمة مرور صريحة قديمة (pw) وأي بصمة غير صالحة
+function cleanCfg(c){
+  const o = {...DEF, ...(c && typeof c === 'object' ? c : {})};
+  delete o.pw;
+  if (!parsePwHash(o.pwHash)) delete o.pwHash;
+  return o;
+}
+const hasLegacyPw = c => !!(c && typeof c === 'object' && 'pw' in c);
+
+let CFG=(()=>{try{
+  const s=localStorage.getItem('pf:c');if(!s)return cleanCfg();
+  const raw=JSON.parse(s),c=cleanCfg(raw);
+  if(hasLegacyPw(raw))localStorage.setItem('pf:c',JSON.stringify(c)); // مسح كلمة المرور القديمة من المتصفح فوراً
+  return c;
+}catch(e){return cleanCfg()}})();
 
 async function cloudLoad(){
   if(!cloudOn())return null;
@@ -636,7 +695,7 @@ async function cloudLoad(){
 async function cloudSave(){
   if(!cloudOn()){sync('⚠️ أضف المفتاح','err');return false}
   try{
-    const r=await fetch(`${BIN_BASE}/${getBin()}`,{method:'PUT',headers:{'Content-Type':'application/json','X-Access-Key':getKey()},body:JSON.stringify(CFG)});
+    const r=await fetch(`${BIN_BASE}/${getBin()}`,{method:'PUT',headers:{'Content-Type':'application/json','X-Access-Key':getKey()},body:JSON.stringify(cleanCfg(CFG))});
     if(!r.ok)throw 0;
     sync('☁️ تم الحفظ','ok');updCloudStatus();return true;
   }catch(e){sync('❌ فشل الحفظ','err');updCloudStatus();return false}
@@ -646,8 +705,9 @@ async function syncNow(){
   sync('⏳ جاري المزامنة','load');
   const c=await cloudLoad();
   if(c&&c.name){
-    CFG={...DEF,...c};
+    CFG=cleanCfg(c);
     try{localStorage.setItem('pf:c',JSON.stringify(CFG))}catch(e){}
+    if(hasLegacyPw(c))cloudSave(); // إزالة كلمة المرور الصريحة القديمة من السحابة
     render();
     if(isAdmin())loadFields();
     sync('✓ تم التحديث من السحابة','ok');
@@ -659,8 +719,9 @@ async function boot(){
   sync('⏳ جاري المزامنة','load');
   const c=await cloudLoad();
   if(c&&c.name){
-    CFG={...DEF,...c};
+    CFG=cleanCfg(c);
     try{localStorage.setItem('pf:c',JSON.stringify(CFG))}catch(e){}
+    if(hasLegacyPw(c))cloudSave(); // إزالة كلمة المرور الصريحة القديمة من السحابة
     sync('✓ تم جلب بياناتك','ok');
     render();
   }else await cloudSave();
@@ -672,6 +733,7 @@ function updCloudStatus(){
   else{el.style.background='rgba(34,197,94,.15)';el.style.borderColor='rgba(34,197,94,.4)';el.textContent='✓ المزامنة مُفعّلة'}
 }
 function saveCfg(){
+  CFG=cleanCfg(CFG);
   try{localStorage.setItem('pf:c',JSON.stringify(CFG))}catch(e){}
   cloudSave();
 }
@@ -932,7 +994,14 @@ updOwner();
 $('aClose').onclick=closeAdmin;
 $('pwCancel').onclick=closeAdmin;
 $('aLogout').onclick=()=>{setAdmin(false);closeAdmin();updOwner();toast('✓ تم')};
-$('pwGo').onclick=()=>{if($('pw').value===CFG.pw)showAdmin();else{$('pwErr').style.display='block';$('pw').value=''}};
+$('pwGo').onclick=async()=>{
+  const btn=$('pwGo');if(btn.disabled)return;
+  btn.disabled=true;$('pwErr').style.display='none';
+  const ok=await checkPw($('pw').value);
+  btn.disabled=false;
+  if(ok){$('pw').value='';showAdmin()}
+  else{$('pwErr').style.display='block';$('pw').value=''}
+};
 $('pw').addEventListener('keydown',e=>{if(e.key==='Enter')$('pwGo').click()});
 $('aTabs').onclick=e=>{
   const b=e.target.closest('button');if(!b)return;
@@ -980,13 +1049,20 @@ $('saveBin').onclick=()=>{
 $('clearKey').onclick=()=>{if(!confirm('مسح المفتاح؟'))return;localStorage.removeItem('pf:key');$('fCloudKey').placeholder='الصق المفتاح هنا';updCloudStatus();toast('✓')};
 $('syncNow').onclick=syncNow;
 $('aSave').onclick=()=>{collect();saveCfg();render();toast('✓ تم الحفظ')};
-$('changePw').onclick=()=>{
-  if($('fOldPw').value!==CFG.pw){toast('❌ كلمة المرور خاطئة');return}
-  if($('fNewPw').value!==$('fNewPw2').value){toast('❌ مختلفتان');return}
-  if($('fNewPw').value.length<4){toast('❌ قصيرة');return}
-  CFG.pw=$('fNewPw').value;saveCfg();
-  $('fOldPw').value='';$('fNewPw').value='';$('fNewPw2').value='';
-  toast('✓ تم التغيير');
+$('changePw').onclick=async()=>{
+  const btn=$('changePw');if(btn.disabled)return;
+  const oldPw=$('fOldPw').value,n1=$('fNewPw').value,n2=$('fNewPw2').value;
+  btn.disabled=true;
+  try{
+    if(!await checkPw(oldPw)){toast('❌ كلمة المرور خاطئة');return}
+    if(n1!==n2){toast('❌ مختلفتان');return}
+    if(n1.length<8){toast('❌ قصيرة (8 أحرف على الأقل)');return}
+    CFG.pwHash=await makePwHash(n1);   // ملح جديد + بصمة فقط، بدون نص صريح
+    delete CFG.pw;
+    saveCfg();                         // localStorage (pf:c) + مزامنة jsonbin
+    $('fOldPw').value='';$('fNewPw').value='';$('fNewPw2').value='';
+    toast('✓ تم التغيير');
+  }finally{btn.disabled=false}
 };
 $('admin').onclick=e=>{if(e.target===$('admin'))closeAdmin()};
 $('lbX').onclick=()=>$('lb').classList.remove('on');
