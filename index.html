@@ -20,7 +20,8 @@
 <link href="https://fonts.googleapis.com/css2?family=El+Messiri:wght@500;600;700&family=Tajawal:wght@300;400;500;700;800&display=swap" rel="stylesheet">
 <script>
 /* تطبيق الوضع المحفوظ (فاتح/داكن) قبل رسم الصفحة لتفادي الوميض */
-(function(){try{var t=localStorage.getItem('pf:theme');if(!t)t=matchMedia('(prefers-color-scheme: light)').matches?'light':'dark';document.documentElement.setAttribute('data-theme',t)}catch(e){}})();
+(function(){try{var t=localStorage.getItem('pf:theme');if(!t)t=matchMedia('(prefers-color-scheme: light)').matches?'light':'dark';document.documentElement.setAttribute('data-theme',t)}catch(e){}
+try{if(location.hash==='#admin'||sessionStorage.getItem('pf:a')==='1')document.documentElement.classList.add('owner')}catch(e){}})();
 </script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -100,6 +101,8 @@ img{max-width:100%}
 [data-theme="light"] .theme-btn .moon{display:none}
 #menuBtn{display:none}
 .btn-edit{height:40px;padding:0 16px;border-radius:12px;background:transparent;color:var(--acc);border:1px solid color-mix(in srgb,var(--p1) 45%,transparent);font-weight:700;font-size:13px;cursor:pointer;font-family:inherit;transition:background .25s,color .25s,transform .25s var(--ease)}
+.btn-edit{display:none}
+.owner .btn-edit{display:inline-block}
 .btn-edit:hover{background:linear-gradient(135deg,var(--p1),var(--p2));color:var(--on-p);transform:translateY(-1px)}
 
 /* ===== الواجهة الرئيسية ===== */
@@ -568,7 +571,7 @@ footer #ftRole:not(:empty)::before{content:" — "}
       <button class="add" id="changePw" style="background:linear-gradient(135deg,var(--p1),var(--p2));color:#fff;border:0">🔒 تغيير كلمة المرور</button>
       <div class="info" style="margin-top:14px">
         <b>🔑 الدخول للوحة:</b><br>
-        اضغط زر <b>✏️ تعديل</b> في الأعلى
+        زر <b>✏️ تعديل</b> مخفي عن الزوار. لإظهاره أضف <b>#admin</b> لنهاية رابط الموقع، أو اضغط <b>Ctrl+Shift+E</b> (أو <b>⌘+Shift+E</b> على ماك).
       </div>
     </div>
   </div>
@@ -777,7 +780,7 @@ function openAdmin(){
 function showAdmin(){
   $('loginBox').style.display='none';
   $('adminBox').style.display='';
-  setAdmin(true);loadFields();renderPicker();renderColors();
+  setAdmin(true);updOwner();loadFields();renderPicker();renderColors();
   updCloudStatus();
   if(getKey())$('fCloudKey').placeholder='✓ مفتاح محفوظ';
   $('fBinId').value=getBin();
@@ -916,9 +919,19 @@ function collect(){
 }
 
 $('editBtn').onclick=openAdmin;
+/* زر التعديل مخفي عن الزوار: يظهر فقط عبر #admin أو اختصار Ctrl/⌘+Shift+E، أو بعد تسجيل دخول المالك في نفس الجلسة */
+let ownerReveal=location.hash==='#admin';
+function updOwner(){document.documentElement.classList.toggle('owner',ownerReveal||isAdmin())}
+addEventListener('hashchange',()=>{if(location.hash==='#admin'){ownerReveal=true;updOwner()}});
+document.addEventListener('keydown',e=>{
+  if((e.ctrlKey||e.metaKey)&&e.shiftKey&&!e.altKey&&(e.code==='KeyE'||String(e.key).toLowerCase()==='e')){
+    e.preventDefault();ownerReveal=true;updOwner();$('editBtn').focus();
+  }
+});
+updOwner();
 $('aClose').onclick=closeAdmin;
 $('pwCancel').onclick=closeAdmin;
-$('aLogout').onclick=()=>{setAdmin(false);closeAdmin();toast('✓ تم')};
+$('aLogout').onclick=()=>{setAdmin(false);closeAdmin();updOwner();toast('✓ تم')};
 $('pwGo').onclick=()=>{if($('pw').value===CFG.pw)showAdmin();else{$('pwErr').style.display='block';$('pw').value=''}};
 $('pw').addEventListener('keydown',e=>{if(e.key==='Enter')$('pwGo').click()});
 $('aTabs').onclick=e=>{
