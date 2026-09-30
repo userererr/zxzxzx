@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'">
+<meta name="color-scheme" content="dark">
+<title>مولّد بصمة كلمة السر</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--p1:#D4AF37;--p2:#F3DFA2;--on-p:#16120A;--bg:#07080C;--ink:#F5F1E8;--muted:#A29D91;--line:rgba(255,255,255,.14)}
+body{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;background:radial-gradient(60vmax 60vmax at 90% -10%,rgba(212,175,55,.18),transparent 60%),var(--bg);color:var(--ink);font-family:Tajawal,"Segoe UI",Tahoma,system-ui,sans-serif;line-height:1.8}
+.card{width:100%;max-width:440px;padding:30px;border-radius:24px;background:linear-gradient(180deg,#12141C,#0C0E14);border:1px solid var(--line);box-shadow:0 40px 100px -30px rgba(0,0,0,.8)}
+h1{font-size:21px;margin-bottom:4px;background:linear-gradient(135deg,var(--p1),var(--p2));-webkit-background-clip:text;background-clip:text;color:transparent}
+.sub{color:var(--muted);font-size:13px;margin-bottom:20px}
+label{display:block;font-size:13px;color:var(--muted);margin:12px 0 6px}
+.wrap{position:relative}
+input{width:100%;padding:12px 14px;border-radius:12px;background:rgba(255,255,255,.05);border:1px solid var(--line);color:var(--ink);font:inherit;font-size:15px}
+input:focus{outline:none;border-color:var(--p1)}
+.wrap input{padding-left:64px}
+.eye{position:absolute;left:6px;top:50%;transform:translateY(-50%);padding:6px 10px;border-radius:9px;border:1px solid var(--line);background:rgba(255,255,255,.06);color:var(--ink);font:inherit;font-size:12px;cursor:pointer}
+.hint{font-size:12.5px;margin-top:6px;min-height:1.8em;color:var(--muted)}
+.hint.bad{color:#F87171}.hint.mid{color:#FBBF24}.hint.good{color:#4ADE80}
+.go{width:100%;margin-top:18px;padding:13px;border-radius:12px;border:0;background:linear-gradient(135deg,var(--p1),var(--p2));color:var(--on-p);font:inherit;font-weight:700;font-size:15px;cursor:pointer}
+.go:disabled{opacity:.6;cursor:wait}
+.err{color:#F87171;font-size:13px;margin-top:10px;min-height:1.4em;font-weight:600}
+.out{display:none;margin-top:18px}
+.out.on{display:block}
+.line{direction:ltr;text-align:left;font-family:ui-monospace,Consolas,monospace;font-size:12.5px;word-break:break-all;padding:12px;border-radius:12px;background:rgba(0,0,0,.35);border:1px solid rgba(212,175,55,.35);user-select:all}
+.copy{margin-top:8px;width:100%;padding:11px;border-radius:12px;border:1px solid var(--p1);background:transparent;color:var(--p2);font:inherit;font-weight:700;cursor:pointer}
+.note{margin-top:14px;padding:12px;border-radius:12px;background:rgba(212,175,55,.08);border:1px solid rgba(212,175,55,.25);font-size:13.5px}
+.priv{margin-top:16px;color:var(--muted);font-size:12px;text-align:center}
+</style>
+</head>
+<body>
+<main class="card">
+  <h1>🔐 مولّد بصمة كلمة السر</h1>
+  <p class="sub">يحوّل كلمة السر إلى بصمة مشفّرة باتجاه واحد (PBKDF2-SHA256). كل شيء يتم داخل متصفحك.</p>
+
+  <label for="pw">كلمة السر الجديدة</label>
+  <div class="wrap">
+    <input type="password" id="pw" autocomplete="new-password" autocapitalize="off" spellcheck="false">
+    <button type="button" class="eye" id="eye" aria-pressed="false">إظهار</button>
+  </div>
+  <div class="hint" id="hint">يُنصح بـ 12 حرفاً على الأقل.</div>
+
+  <label for="pw2">تأكيد كلمة السر</label>
+  <input type="password" id="pw2" autocomplete="new-password" autocapitalize="off" spellcheck="false">
+
+  <button type="button" class="go" id="go">توليد</button>
+  <div class="err" id="err" role="alert"></div>
+
+  <div class="out" id="out">
+    <label for="line">الناتج</label>
+    <div class="line" id="line" tabindex="0"></div>
+    <button type="button" class="copy" id="copy">📋 نسخ</button>
+    <div class="note">انسخ هذا السطر وأرسله. كلمة السر نفسها ما تطلع من جهازك.</div>
+  </div>
+
+  <p class="priv">لا يُرسل أي شيء إلى الإنترنت، ولا يُحفظ أي شيء.</p>
+</main>
+
+<script>
+'use strict';
+// إعدادات البصمة — يجب أن تطابق ما يستخدمه index.html
+const ITERATIONS = 200000;
+const SALT_BYTES = 16;
+const HASH_BYTES = 32;
+
+const $ = id => document.getElementById(id);
+
+function toBase64(bytes) {
+  let s = '';
+  for (const b of bytes) s += String.fromCharCode(b);
+  return btoa(s);
+}
+
+// PBKDF2-SHA256 عبر Web Crypto (داخل المتصفح فقط)
+async function pbkdf2(password, salt, iterations) {
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveBits']);
+  const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt, iterations }, key, HASH_BYTES * 8);
+  return new Uint8Array(bits);
+}
+
+// ينتج: pbkdf2$200000$<salt_base64>$<hash_base64>
+async function makeLine(password, salt) {
+  salt = salt || crypto.getRandomValues(new Uint8Array(SALT_BYTES));
+  const hash = await pbkdf2(password, salt, ITERATIONS);
+  return `pbkdf2$${ITERATIONS}$${toBase64(salt)}$${toBase64(hash)}`;
+}
+
+function strength(p) {
+  const h = $('hint');
+  if (!p) { h.className = 'hint'; h.textContent = 'يُنصح بـ 12 حرفاً على الأقل.'; return; }
+  const kinds = [/[a-z]/, /[A-Z]/, /[0-9]/, /[^A-Za-z0-9]/].filter(r => r.test(p)).length;
+  if (p.length < 8) { h.className = 'hint bad'; h.textContent = `ضعيفة جداً (${p.length} أحرف) — يُنصح بـ 12 على الأقل.`; }
+  else if (p.length < 12) { h.className = 'hint mid'; h.textContent = `مقبولة لكن قصيرة (${p.length} أحرف) — يُنصح بـ 12 على الأقل.`; }
+  else if (kinds < 3) { h.className = 'hint mid'; h.textContent = `طول جيد (${p.length}) — أضف أرقاماً ورموزاً وحروفاً كبيرة لقوة أكبر.`; }
+  else { h.className = 'hint good'; h.textContent = `قوية (${p.length} حرفاً).`; }
+}
+
+function hideOut() { $('out').classList.remove('on'); $('line').textContent = ''; }
+
+$('pw').addEventListener('input', () => { strength($('pw').value); hideOut(); });
+$('pw2').addEventListener('input', hideOut);
+
+$('eye').onclick = () => {
+  const show = $('pw').type === 'password';
+  $('pw').type = $('pw2').type = show ? 'text' : 'password';
+  $('eye').textContent = show ? 'إخفاء' : 'إظهار';
+  $('eye').setAttribute('aria-pressed', String(show));
+};
+
+$('go').onclick = async () => {
+  const p = $('pw').value, p2 = $('pw2').value;
+  $('err').textContent = ''; hideOut();
+  if (!p) { $('err').textContent = 'اكتب كلمة السر.'; return; }
+  if (p !== p2) { $('err').textContent = 'كلمتا السر غير متطابقتين.'; return; }
+  if (!(window.crypto && crypto.subtle)) { $('err').textContent = 'المتصفح لا يدعم Web Crypto (افتح الصفحة عبر https).'; return; }
+  $('go').disabled = true; $('go').textContent = '... جاري التوليد';
+  try {
+    $('line').textContent = await makeLine(p);
+    $('out').classList.add('on');
+    $('pw').value = ''; $('pw2').value = ''; strength('');
+  } catch (e) {
+    $('err').textContent = 'حدث خطأ أثناء التوليد.';
+  } finally {
+    $('go').disabled = false; $('go').textContent = 'توليد';
+  }
+};
+[$('pw'), $('pw2')].forEach(el => el.addEventListener('keydown', e => { if (e.key === 'Enter') $('go').click(); }));
+
+$('copy').onclick = async () => {
+  const t = $('line').textContent;
+  try { await navigator.clipboard.writeText(t); }
+  catch (e) {
+    const r = document.createRange(); r.selectNodeContents($('line'));
+    const s = getSelection(); s.removeAllRanges(); s.addRange(r); document.execCommand('copy'); s.removeAllRanges();
+  }
+  $('copy').textContent = '✓ تم النسخ';
+  setTimeout(() => { $('copy').textContent = '📋 نسخ'; }, 1800);
+};
+</script>
+</body>
+</html>
